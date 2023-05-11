@@ -5,7 +5,7 @@ const { ethers } = require("hardhat");
 const provider = ethers.provider;
 const signer = provider.getSigner();
 
-describe("Testint Invoice", function () {
+describe("Testing Invoice", function () {
     async function deployFactory() {
         const accounts = await ethers.getSigners();
 
@@ -32,31 +32,25 @@ describe("Testint Invoice", function () {
         await TestToken.deployed();
 
         const distributors = [accounts[2].address, accounts[3].address];
-        const initialRecipients = [
-            accounts[4].address,
-            accounts[5].address,
-            accounts[6].address,
-        ];
-        const amounts = [
-            ethers.utils.parseEther("1"),
-            ethers.utils.parseEther("2"),
-            ethers.utils.parseEther("3"),
+        const recipientsData = [
+            [accounts[4].address, ethers.utils.parseEther("1")],
+            [accounts[5].address, ethers.utils.parseEther("2")],
+            [accounts[6].address, ethers.utils.parseEther("3")]
         ];
 
-        let RSCCreateData = [
+        let InvoiceCreateData = [
             accounts[1].address,
             distributors,
             false,
-            initialRecipients,
+            recipientsData,
             TestToken.address,
-            amounts,
             ethers.constants.HashZero,
         ];
-
-        let tx = await InvoiceFactory.createInvoice(RSCCreateData);
+        
+        let tx = await InvoiceFactory.createInvoice(InvoiceCreateData);
         let receipt = await tx.wait();
         const invoiceAddress = receipt.events[3].args[0];
-
+        
         const Invoice = await ethers.getContractAt(
             "Invoice",
             invoiceAddress,
@@ -74,24 +68,18 @@ describe("Testint Invoice", function () {
         await InvoiceFactory.deployed();
 
         const distributors = [accounts[2].address, accounts[3].address];
-        const initialRecipients = [
-            accounts[4].address,
-            accounts[5].address,
-            accounts[6].address,
-        ];
-        const amounts = [
-            ethers.utils.parseEther("0.1"),
-            ethers.utils.parseEther("0.2"),
-            ethers.utils.parseEther("0.3"),
+        const recipientsData = [
+            [accounts[4].address, ethers.utils.parseEther("0.1")],
+            [accounts[5].address, ethers.utils.parseEther("0.2")],
+            [accounts[6].address, ethers.utils.parseEther("0.3")]
         ];
 
         let RSCCreateData = [
             accounts[1].address,
             distributors,
             false,
-            initialRecipients,
+            recipientsData,
             ethers.constants.AddressZero,
-            amounts,
             ethers.constants.HashZero,
         ];
         
@@ -171,13 +159,10 @@ describe("Testint Invoice", function () {
             let alice = accounts[7];
             let john = accounts[8];
             expect(
-                Invoice.setRecipients([alice.address, john.address], [1, 2])
+                Invoice.setRecipients([[alice.address, 1], [john.address, 2]])
             ).to.be.revertedWithCustomError(Invoice, "OnlyControllerError");
 
-            await Invoice.connect(accounts[1]).setRecipients(
-                [accounts[4].address, accounts[5].address],
-                [1, 2]
-            );
+            await Invoice.connect(accounts[1]).setRecipients([[alice.address, 1], [john.address, 2]]);
 
             expect(await Invoice.numberOfRecipients()).to.be.equal(2);
             expect(await Invoice.totalAmount()).to.be.equal(3);
@@ -186,8 +171,7 @@ describe("Testint Invoice", function () {
 
             expect(
                 Invoice.setRecipients(
-                    [accounts[4].address, accounts[5].address],
-                    [1, 2]
+                    [[accounts[4].address, 1], [accounts[5].address, 2]]
                 )
             ).to.be.revertedWithCustomError(
                 Invoice,

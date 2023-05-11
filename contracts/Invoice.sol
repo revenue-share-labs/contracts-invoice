@@ -4,64 +4,105 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./interfaces/IFeeFactory.sol";
 
-// Throw when if sender is not distributor
+/// Throw when if sender is not distributor
 error OnlyDistributorError();
 
-// Throw when sender is not controller
+/// Throw when sender is not controller
 error OnlyControllerError();
 
-// Throw when transaction fails
+/// Throw when transaction fails
 error TransferFailedError();
 
-// Throw when submitted recipient with address(0)
+/// Throw when submitted recipient with address(0)
 error NullAddressRecipientError();
 
-// Throw when arrays are submit without same length
-error InconsistentDataLengthError();
-
-// Throw when distributor address is same as submit one
+/// Throw when distributor address is same as submit one
 error ControllerAlreadyConfiguredError();
 
-// Throw when change is triggered for immutable controller
+/// Throw when change is triggered for immutable controller
 error ImmutableControllerError();
 
-// Throw if recipient is already in the recipients pool
+/// Throw if recipient is already in the recipients pool
 error RecipientAlreadyAddedError();
 
+/// Throw when change is triggered for immutable recipients
 error ImmutableRecipientsError();
 
+/// @title Invoice contract.
+/// @notice The main function of Invoice is to redistribute token
+/// (either ERC-20 or native token), to the participants
+/// based on the fixed amount assigned to them.
 contract Invoice is OwnableUpgradeable{
     using SafeERC20 for IERC20;
     
+    /// distributorAddress => isDistributor
     mapping(address => bool) public distributors;
+    
+    /// Controller address
     address public controller;
+    
+    /// Factory address
     IFeeFactory public factory;
+    
+    /// Address of the token to be distributed
     address public supportedToken;
+
+    /// If true, `recipients` array cant be updated
     bool public isImmutableRecipients;
+
+    /// Platform fee percentage
     uint256 public platformFee;
+
+    /// Total amount of the distribution
     uint256 public totalAmount;
+
+    /// If true, native currency will be distributed
     bool isNativeDistribution;
 
-    mapping(address => uint256) public recieveAmount;
+    /// recipientAddress => receiveAmount
+    mapping(address => uint256) public receiveAmount;
+    
+    /// Array of the recipients
     address payable[] public recipients;
 
+    /// Initial contract settings
     struct InitContractSetting {
+        /// Owner of the contract
         address owner;
+        /// Address which sets recipients
         address controller;
+        /// List of addresses which can distribute either ERC20 tokens or native currency
         address[] distributors;
+        /// Flag indicating whether recipients could be changed
         bool isImmutableRecipients;
-        address payable [] initialRecipients;
+        /// Array of `RecipientData` structs with recipient address and amount to receive
+        RecipientData[] recipientsData;
+        /// Address of the token to be distributed
         address token;
-        uint256[] amounts;
+        /// Percentage defining fee for distribution services
         uint256 platformFee;
-        address factory;
     }
 
-    event SetRecipients(address payable[] recipients, uint256[] maxCaps);
+    /// Contains recipient address and their amount to receive
+    struct RecipientData {
+        address payable recipient;
+        uint256 amount;
+    }
+ 
+    /// Emmited when recipients and their percentages are set
+    event SetRecipients(RecipientData[] recipientsData);
+
+    /// Emitted when token distribution is triggered
     event DistributeToken(address token, uint256 amount);
-    event DistributorChanged(address distributor, bool isDistributor);
-    event ControllerChanged(address oldController, address newController);
+
+    /// Emmitted when native currency is triggered
     event DistributeNativeToken(uint256 amount);
+
+    /// Emmitted when distributors are set
+    event DistributorChanged(address distributor, bool isDistributor);
+
+    /// Emitted when new controller address is set
+    event ControllerChanged(address oldController, address newController);
 
     /**
      * @dev Throws if sender is not distributor
@@ -83,6 +124,9 @@ contract Invoice is OwnableUpgradeable{
         _;
     }
 
+    /**
+     * @dev Throws if recipients can't be changed
+     */
     modifier onlyImmutableRecipients() {
         if (isImmutableRecipients) {
             revert ImmutableRecipientsError();
@@ -90,6 +134,10 @@ contract Invoice is OwnableUpgradeable{
         _;
     }
 
+    /**
+     * @dev Constructor function, can be called only once
+     * @param _settings Initial data for contract setup
+     */
     function initialize(
         InitContractSetting calldata _settings
     ) public initializer {
@@ -105,16 +153,17 @@ contract Invoice is OwnableUpgradeable{
         platformFee = _settings.platformFee;
         isImmutableRecipients = _settings.isImmutableRecipients;
 
-        factory = IFeeFactory(_settings.factory);
+        factory = IFeeFactory(msg.sender);
         _transferOwnership(_settings.owner);
+
         if (_settings.token == address(0)) {
             isNativeDistribution = true;
         } else {
             supportedToken = _settings.token;
         }
-        supportedToken = _settings.token;
+        
         // Recipients settings
-        _setRecipients(_settings.initialRecipients, _settings.amounts);
+        _setRecipients(_settings.recipientsData);
     }
 
     /**
@@ -154,22 +203,23 @@ contract Invoice is OwnableUpgradeable{
 
     /**
      * @notice External function for setting recipients
-     * @param _newRecipients Addresses to be added
-     * @param _maxCaps Maximum amount recipient will receive
+     * @param recipientsData Array of struct that contains data about recipients
      */
     function setRecipients(
-        address payable[] memory _newRecipients,
-        uint256[] memory _maxCaps
+        RecipientData[] memory recipientsData
     ) public onlyController onlyImmutableRecipients {
-        _setRecipients(_newRecipients, _maxCaps);
+        _setRecipients(recipientsData);
     }
 
-    function lockRecipients() public onlyOwner onlyImmutableRecipients {
+    /**
+     * @dev External function for setting immutable recipients to true
+     */
+    function lockRecipients() external onlyOwner onlyImmutableRecipients {
         isImmutableRecipients = true;
     }
 
     /**
-     * @notice External function to redistribute native token based on waterfall rules
+     * @notice External function to redistribute native token
      */
     function redistributeNativeToken() external onlyDistributor {
         if (!isNativeDistribution) {
@@ -184,7 +234,7 @@ contract Invoice is OwnableUpgradeable{
     }    
 
     /**
-     * @notice External function to redistribute ERC20 token based on waterfall rules
+     * @notice External function to redistribute ERC20 token
      */
     function redistributeToken() external onlyDistributor {
         if (isNativeDistribution) {
@@ -196,7 +246,7 @@ contract Invoice is OwnableUpgradeable{
     /**
      * @notice Internal function enable adding new recipient.
      * @param _recipient New recipient address to be added
-     * @param _maxCap max cap of new recipient provided in USD
+     * @param _maxCap max cap of new recipient
      */
     function _addRecipient(
         address payable _recipient,
@@ -204,41 +254,35 @@ contract Invoice is OwnableUpgradeable{
     ) internal {
         if (_recipient == address(0)) {
             revert NullAddressRecipientError();
-        } else if (recieveAmount[_recipient] > 0) {
+        } else if (receiveAmount[_recipient] > 0) {
             revert RecipientAlreadyAddedError();
         }
 
         recipients.push(_recipient);
-        recieveAmount[_recipient] = _maxCap;
+        receiveAmount[_recipient] = _maxCap;
     }
 
     /**
      * @notice Internal function for setting recipients
-     * @param _newRecipients Recipient addresses to be added
-     * @param _maxCaps List of maxCaps for recipients
+     * @param recipientsData Array of struct that contains data about recipients
      */
     function _setRecipients(
-        address payable[] memory _newRecipients,
-        uint256[] memory _maxCaps
+        RecipientData[] memory recipientsData
     ) internal {
-        uint256 newRecipientsLength = _newRecipients.length;
-
-        if (newRecipientsLength != _maxCaps.length) {
-            revert InconsistentDataLengthError();
-        }
+        uint256 newRecipientsLength = recipientsData.length;
 
         _removeAll();
         totalAmount = 0;
 
         for (uint256 i = 0; i < newRecipientsLength; ) {
-            _addRecipient(_newRecipients[i], _maxCaps[i]);
-            totalAmount += _maxCaps[i];
+            _addRecipient(recipientsData[i].recipient, recipientsData[i].amount);
+            totalAmount += recipientsData[i].amount;
             unchecked {
                 i++;
             }
         }
 
-        emit SetRecipients(_newRecipients, _maxCaps);
+        emit SetRecipients(recipientsData);
     }
 
     /**
@@ -253,7 +297,7 @@ contract Invoice is OwnableUpgradeable{
 
         for (uint256 i = 0; i < recipientsLength; ) {
             address recipient = recipients[i];
-            delete recieveAmount[recipient];
+            delete receiveAmount[recipient];
             unchecked {
                 i++;
             }
@@ -261,6 +305,10 @@ contract Invoice is OwnableUpgradeable{
         delete recipients;
     }
 
+    /**
+     * @dev Internal function to redistribute native currency
+     * @param balance Native currency amount to be distributed
+     */
     function _redistributeNativeToken(
         uint256 balance
     ) internal {
@@ -279,14 +327,14 @@ contract Invoice is OwnableUpgradeable{
             }
             address payable platformWallet = factory.platformWallet();
             (bool feeSuccess, ) = platformWallet.call{ value: fee }("");
-            if (feeSuccess == false) {
+            if (!feeSuccess) {
                 revert TransferFailedError();
             }
         }
 
         for (uint i = 0; i < recipientsLength;) {
             address currentRecipient = recipients[i];
-            uint256 tokenValueToSent = recieveAmount[currentRecipient];
+            uint256 tokenValueToSent = receiveAmount[currentRecipient];
 
             (bool success, ) = payable(currentRecipient).call{
                 value: tokenValueToSent
@@ -303,7 +351,7 @@ contract Invoice is OwnableUpgradeable{
     }
 
     /**
-     * @notice Internal function to redistribute ERC20 token based waterfall rules
+     * @notice Internal function to redistribute ERC20 token
      */
     function _redistributeToken() internal {
         uint256 recipientsLength = recipients.length;
@@ -333,7 +381,7 @@ contract Invoice is OwnableUpgradeable{
 
         for (uint i = 0; i < recipientsLength;) {
             address currentRecipient = recipients[i];
-            uint256 tokenValueToSent = recieveAmount[currentRecipient];
+            uint256 tokenValueToSent = receiveAmount[currentRecipient];
 
             erc20Token.safeTransfer(currentRecipient, tokenValueToSent);
             unchecked {
