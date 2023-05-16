@@ -1,4 +1,6 @@
-pragma solidity ^0.8.19;
+// SPDX-License-Identifier: BSL 1.1
+
+pragma solidity 0.8.20;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -27,6 +29,9 @@ error RecipientAlreadyAddedError();
 
 /// Throw when change is triggered for immutable recipients
 error ImmutableRecipientsError();
+
+/// Throw when contract balance lower than total amount
+error LowBalanceError();
 
 /// @title Invoice contract.
 /// @notice The main function of Invoice is to redistribute token
@@ -57,7 +62,7 @@ contract Invoice is OwnableUpgradeable{
     uint256 public totalAmount;
 
     /// If true, native currency will be distributed
-    bool isNativeDistribution;
+    bool public isNativeDistribution;
 
     /// recipientAddress => receiveAmount
     mapping(address => uint256) public receiveAmount;
@@ -89,8 +94,8 @@ contract Invoice is OwnableUpgradeable{
         uint256 amount;
     }
  
-    /// Emmited when recipients and their percentages are set
-    event SetRecipients(RecipientData[] recipientsData);
+    /// Emmited when recipients and their amount to receive are set
+    event SetRecipients(RecipientData[] recipients);
 
     /// Emitted when token distribution is triggered
     event DistributeToken(address token, uint256 amount);
@@ -102,7 +107,7 @@ contract Invoice is OwnableUpgradeable{
     event DistributorChanged(address distributor, bool isDistributor);
 
     /// Emitted when new controller address is set
-    event ControllerChanged(address oldController, address newController);
+    event ControllerChanged(address newController);
 
     /**
      * @dev Throws if sender is not distributor
@@ -136,11 +141,11 @@ contract Invoice is OwnableUpgradeable{
 
     /**
      * @dev Constructor function, can be called only once
-     * @param _settings Initial data for contract setup
+     * @param _settings Contract settings. Check InitContractSetting struct
      */
     function initialize(
         InitContractSetting calldata _settings
-    ) public initializer {
+    ) external initializer {
         controller = _settings.controller;
 
         uint256 distributorsLength = _settings.distributors.length;
@@ -197,18 +202,18 @@ contract Invoice is OwnableUpgradeable{
         if (_controller == controller) {
             revert ControllerAlreadyConfiguredError();
         }
-        emit ControllerChanged(controller, _controller);
+        emit ControllerChanged(_controller);
         controller = _controller;
     }
 
     /**
      * @notice External function for setting recipients
-     * @param recipientsData Array of struct that contains data about recipients
+     * @param _recipientsData Array of `RecipientData` structs with data about recipients
      */
     function setRecipients(
-        RecipientData[] memory recipientsData
+        RecipientData[] memory _recipientsData
     ) public onlyController onlyImmutableRecipients {
-        _setRecipients(recipientsData);
+        _setRecipients(_recipientsData);
     }
 
     /**
@@ -317,13 +322,13 @@ contract Invoice is OwnableUpgradeable{
             return;
         }
         if (balance < totalAmount) {
-            return;
+            revert LowBalanceError();
         }
         // if any, subtract platform Fee and send it to platformWallet
         if (platformFee > 0) {
             uint256 fee = totalAmount * platformFee / 10000000;
             if (balance < totalAmount + fee) {
-                return;
+                revert LowBalanceError();
             }
             address payable platformWallet = factory.platformWallet();
             (bool feeSuccess, ) = platformWallet.call{ value: fee }("");
@@ -364,7 +369,7 @@ contract Invoice is OwnableUpgradeable{
         uint256 balance = erc20Token.balanceOf(address(this));
         if (balance < totalAmount) {
             // Nothing to distribute
-            return;
+            revert LowBalanceError();
         }
 
         // if any subtract platform Fee and send it to platformWallet
@@ -372,7 +377,7 @@ contract Invoice is OwnableUpgradeable{
             uint256 fee = totalAmount * platformFee / 10000000;
 
             if (balance < totalAmount + fee) {
-                return;
+                revert LowBalanceError();
             }
             
             address payable platformWallet = factory.platformWallet();
