@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: BSL 1.1
 
-pragma solidity ^0.8.19;
+pragma solidity 0.8.20;
 
 import "@openzeppelin/contracts/proxy/Clones.sol";
 import "contracts/Invoice.sol";
@@ -16,7 +16,7 @@ contract InvoiceFactory is Ownable {
     address payable public immutable contractImplementation;
 
     /// InvoiceFactory contract version
-    uint256 constant version = 1;
+    uint256 public constant version = 1;
     
     /// Current platfrom fee
     uint256 public platformFee;
@@ -91,11 +91,11 @@ contract InvoiceFactory is Ownable {
             _data.token,
             platformFee
         );
-
+        
         Invoice(clone).initialize(
             contractSettings
         );
-
+        
         emit InvoiceCreated(
             clone,
             _data.controller,
@@ -109,7 +109,7 @@ contract InvoiceFactory is Ownable {
     }
 
     /**
-     * @dev Only Owner function for setting platform fee
+     * @dev Owner function for setting platform fee.
      * @param _fee Percentage define platform fee 100% == 10000000
      */
     function setPlatformFee(uint256 _fee) external onlyOwner {
