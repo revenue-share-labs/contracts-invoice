@@ -351,7 +351,7 @@ contract Invoice is OwnableUpgradeable{
                 i++;
             }
         }
-
+    
         emit DistributeNativeToken(totalAmount);
     }
 
