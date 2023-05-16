@@ -1,10 +1,10 @@
 # Contracts Invoice
 
-# RSC Valve contracts repository
+# Invoice contracts repository
 
 Detailed documentation for each contract can be found [here](./docs/contracts/).
 
-Deployment instructions described in [Deployment.md](scripts/Deployment.md)
+Deployment instructions described in [Deployment.md](./scripts/Deployment.md)
 
 ## Summary
 
