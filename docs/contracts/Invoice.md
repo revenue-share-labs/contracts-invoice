@@ -10,15 +10,6 @@ The main function of Invoice is to redistribute token (either ERC-20 or native t
 
 ## Events info
 
-### AutoNativeCurrencyDistribution event
-
-```solidity
-event AutoNativeCurrencyDistribution(bool newValue);
-```
-
-
-Emitted when `isAutoNativeCurrencyDistribution` is set.
-
 ### ControllerChanged event
 
 ```solidity

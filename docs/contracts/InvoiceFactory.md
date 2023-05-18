@@ -1,4 +1,4 @@
-# RSCValveFactory
+# InvoiceFactory
 
 ## Contract Description
 
